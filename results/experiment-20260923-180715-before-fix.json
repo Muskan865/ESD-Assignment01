@@ -1,0 +1,210 @@
+{
+  "experiment": "payment-latency-fault",
+  "started": "20260923-180715",
+  "fault": {
+    "probability": 0.2,
+    "seconds": 0.5
+  },
+  "stages": [
+    {
+      "stage": "1-baseline",
+      "fault_active": false,
+      "window": {
+        "start": "2026-09-23T13:07:15+00:00",
+        "end": "2026-09-23T13:08:15+00:00"
+      },
+      "client": {
+        "requests": 600,
+        "successful": 583,
+        "failed": 17,
+        "status_codes": {
+          "201": 583,
+          "402": 17
+        },
+        "latency_ms": {
+          "mean": 30.3,
+          "p50": 30.3,
+          "p95": 51.5,
+          "p99": 60.1,
+          "max": 66.3
+        },
+        "target_rps": 10,
+        "achieved_rps": 10.0,
+        "wall_seconds": 59.9
+      },
+      "prometheus": {
+        "stage": "1-baseline",
+        "evaluated_at": "2026-09-23T13:08:15+00:00",
+        "metrics": {
+          "http_p95_seconds": 0.03401162790697671,
+          "http_p99_seconds": 0.04680232558139535,
+          "checkout_p95_seconds": 0.024963768115942028,
+          "payment_mean_seconds": 0.003972051719995513,
+          "payment_p95_seconds": 0.009469696969696972,
+          "requests_per_second": 10.002000400080016,
+          "error_rate_5xx_percent": 0.0,
+          "orders_placed_per_min": 582.6619869428431,
+          "rejected_payment_error_per_min": 0.0,
+          "requests_in_flight_max": 0.0,
+          "errors_5xx_per_min": 0.0,
+          "db_create_order_p95_seconds": 0.023673780487804875,
+          "db_list_products_p95_seconds": 0.002416194331983805,
+          "orders_awaiting_fulfilment": 2032.0,
+          "orders_placed_total": 2186.0
+        }
+      },
+      "log_counts": {
+        "checkout_requests": 561,
+        "checkout_slow_over_450ms": 0,
+        "checkout_http_5xx": 0,
+        "order_placed": 544,
+        "unhandled_exceptions_by_type": {}
+      },
+      "log_counts_recounted": {
+        "note": "recounted after the run; the original count was taken before Filebeat finished shipping. Window end extended by 1 s because the recorded window was truncated to whole seconds.",
+        "recounted_at": "2026-09-23T14:20:48+00:00",
+        "checkout_requests": 600,
+        "checkout_slow_over_450ms": 0,
+        "checkout_http_5xx": 0,
+        "order_placed": 583,
+        "unhandled_exceptions_by_type": {}
+      }
+    },
+    {
+      "stage": "2-faulted",
+      "fault_active": true,
+      "window": {
+        "start": "2026-09-23T13:17:12+00:00",
+        "end": "2026-09-23T13:18:13+00:00"
+      },
+      "client": {
+        "requests": 600,
+        "successful": 508,
+        "failed": 92,
+        "status_codes": {
+          "201": 508,
+          "402": 21,
+          "500": 71
+        },
+        "latency_ms": {
+          "mean": 489.8,
+          "p50": 325.7,
+          "p95": 1665.5,
+          "p99": 2485.0,
+          "max": 3076.8
+        },
+        "target_rps": 10,
+        "achieved_rps": 9.9,
+        "wall_seconds": 60.6
+      },
+      "prometheus": {
+        "stage": "2-faulted",
+        "evaluated_at": "2026-09-23T13:18:13+00:00",
+        "metrics": {
+          "http_p95_seconds": 2.1042763157894737,
+          "http_p99_seconds": 2.4998026315789477,
+          "checkout_p95_seconds": 2.099,
+          "payment_mean_seconds": 0.09791131009931912,
+          "payment_p95_seconds": 0.6832831325301204,
+          "requests_per_second": 9.343482999999999,
+          "error_rate_5xx_percent": 8.600583090379008,
+          "orders_placed_per_min": 478.9234399999999,
+          "rejected_payment_error_per_min": 0.0,
+          "requests_in_flight_max": 9.0,
+          "errors_5xx_per_min": 66.01982,
+          "db_create_order_p95_seconds": 1.0,
+          "db_list_products_p95_seconds": 0.0031465517241379267,
+          "orders_awaiting_fulfilment": 2319.0,
+          "orders_placed_total": 2697.0
+        }
+      },
+      "log_counts": {
+        "checkout_requests": 562,
+        "checkout_slow_over_450ms": 235,
+        "checkout_http_5xx": 70,
+        "order_placed": 474,
+        "unhandled_exceptions_by_type": {
+          "PoolError": 64,
+          "DeadlockDetected": 8
+        }
+      },
+      "log_counts_recounted": {
+        "note": "recounted after the run; the original count was taken before Filebeat finished shipping. Window end extended by 1 s because the recorded window was truncated to whole seconds.",
+        "recounted_at": "2026-09-23T14:20:48+00:00",
+        "checkout_requests": 562,
+        "checkout_slow_over_450ms": 235,
+        "checkout_http_5xx": 70,
+        "order_placed": 474,
+        "unhandled_exceptions_by_type": {
+          "PoolError": 64,
+          "DeadlockDetected": 8
+        }
+      }
+    },
+    {
+      "stage": "3-recovered",
+      "fault_active": false,
+      "window": {
+        "start": "2026-09-23T13:18:28+00:00",
+        "end": "2026-09-23T13:19:28+00:00"
+      },
+      "client": {
+        "requests": 600,
+        "successful": 580,
+        "failed": 20,
+        "status_codes": {
+          "201": 580,
+          "402": 20
+        },
+        "latency_ms": {
+          "mean": 36.1,
+          "p50": 35.2,
+          "p95": 56.9,
+          "p99": 62.1,
+          "max": 67.3
+        },
+        "target_rps": 10,
+        "achieved_rps": 10.0,
+        "wall_seconds": 60.0
+      },
+      "prometheus": {
+        "stage": "3-recovered",
+        "evaluated_at": "2026-09-23T13:19:28+00:00",
+        "metrics": {
+          "http_p95_seconds": 0.042825520833333325,
+          "http_p99_seconds": 0.04856510416666667,
+          "checkout_p95_seconds": 0.03534574468085107,
+          "payment_mean_seconds": 0.005045443054448617,
+          "payment_p95_seconds": 0.01166935483870971,
+          "requests_per_second": 10.018728294270598,
+          "error_rate_5xx_percent": 0.0,
+          "orders_placed_per_min": 580.3952942887794,
+          "rejected_payment_error_per_min": 0.0,
+          "requests_in_flight_max": 1.0,
+          "errors_5xx_per_min": 0.0,
+          "db_create_order_p95_seconds": 0.0246725,
+          "db_list_products_p95_seconds": 0.002642241379310347,
+          "orders_awaiting_fulfilment": 2643.0,
+          "orders_placed_total": 3269.0
+        }
+      },
+      "log_counts": {
+        "checkout_requests": 600,
+        "checkout_slow_over_450ms": 0,
+        "checkout_http_5xx": 0,
+        "order_placed": 580,
+        "unhandled_exceptions_by_type": {}
+      },
+      "log_counts_recounted": {
+        "note": "recounted after the run; the original count was taken before Filebeat finished shipping. Window end extended by 1 s because the recorded window was truncated to whole seconds.",
+        "recounted_at": "2026-09-23T14:20:48+00:00",
+        "checkout_requests": 600,
+        "checkout_slow_over_450ms": 0,
+        "checkout_http_5xx": 0,
+        "order_placed": 580,
+        "unhandled_exceptions_by_type": {}
+      }
+    }
+  ],
+  "tag": "before-fix"
+}

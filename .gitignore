@@ -1,0 +1,17 @@
+# Downloaded dependencies and data volumes are excluded from the submission,
+# per the assignment's "what to submit" section. Docker named volumes live
+# outside this directory, so there is nothing to exclude for those.
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+
+# Experiment records in results/ ARE submitted - they are the evidence behind
+# the numbers in REPORT.md Part E - so they are deliberately NOT ignored.
+
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

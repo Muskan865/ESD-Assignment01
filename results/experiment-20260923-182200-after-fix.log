@@ -1,0 +1,78 @@
+========================================================================
+PART E.1 - REPRODUCING A SLOW PAYMENT PROVIDER
+========================================================================
+Fault: delay 20% of payment calls by 0.5s (every ~5th request)
+Each stage: 60s of traffic at 10 rps (~12 Prometheus scrapes at 5s), then a 15s wait so the last scrapes and logs land.
+
+[1-baseline]
+  -> 1-baseline: 10 rps for 60s (600 checkouts)
+     requests  : 600  (582 ok, 18 failed)
+     achieved  : 10.0 rps vs 10 target
+     status    : {201: 582, 402: 18}
+     client ms : mean 33.6  p50 33.8  p95 56.5  p99 62.2  max 81.6
+  -> waiting 15s (let the final scrapes and log shipping land)
+  -> reading Prometheus (1-baseline, evaluated at end of traffic)
+     checkout p95      : 0.042 s
+     checkout p99      : 0.049 s
+     payment mean      : 0.005 s  (Summary)
+     payment p95       : 0.014 s  (Histogram)
+     5xx error rate    : 0.00 %
+     orders placed/min : 577.7
+     payment failures  : 0.0 /min
+     5xx errors / min  : 0.0
+     max in flight     : 0
+     db create_order p95 : 0.025 s
+     db list_products p95: 0.002 s
+     logs (this stage only): {'checkout_requests': 600, 'checkout_slow_over_450ms': 0, 'checkout_http_5xx': 0, 'order_placed': 582, 'unhandled_exceptions_by_type': {}}
+
+[2-faulted]
+  -> INJECTING FAULT: latency 0.2 x 0.5s
+  -> 2-faulted: 10 rps for 60s (600 checkouts)
+     requests  : 600  (568 ok, 32 failed)
+     achieved  : 9.7 rps vs 10 target
+     status    : {201: 568, 402: 16, 503: 16}
+     client ms : mean 1046.4  p50 743.4  p95 3070.5  p99 4003.4  max 4721.5
+  -> waiting 15s (let the final scrapes and log shipping land)
+  -> reading Prometheus (2-faulted, evaluated at end of traffic)
+     checkout p95      : 3.810 s
+     checkout p99      : 4.762 s
+     payment mean      : 0.112 s  (Summary)
+     payment p95       : 0.692 s  (Histogram)
+     5xx error rate    : 2.22 %
+     orders placed/min : 549.9
+     payment failures  : 0.0 /min
+     5xx errors / min  : 17.9
+     max in flight     : 28
+     db create_order p95 : 1.000 s
+     db list_products p95: 0.004 s
+     logs (this stage only): {'checkout_requests': 600, 'checkout_slow_over_450ms': 401, 'checkout_http_5xx': 16, 'order_placed': 568, 'unhandled_exceptions_by_type': {}}
+
+[3-recovered]
+  -> REMOVING FAULT
+  -> 3-recovered: 10 rps for 60s (600 checkouts)
+     requests  : 600  (588 ok, 12 failed)
+     achieved  : 10.0 rps vs 10 target
+     status    : {201: 588, 402: 12}
+     client ms : mean 34.1  p50 33.7  p95 57.9  p99 65.5  max 70.9
+  -> waiting 15s (let the final scrapes and log shipping land)
+  -> reading Prometheus (3-recovered, evaluated at end of traffic)
+     checkout p95      : 0.041 s
+     checkout p99      : 0.048 s
+     payment mean      : 0.005 s  (Summary)
+     payment p95       : 0.013 s  (Histogram)
+     5xx error rate    : 0.00 %
+     orders placed/min : 590.3
+     payment failures  : 0.0 /min
+     5xx errors / min  : 0.0
+     max in flight     : 1
+     db create_order p95 : 0.025 s
+     db list_products p95: 0.002 s
+     logs (this stage only): {'checkout_requests': 600, 'checkout_slow_over_450ms': 0, 'checkout_http_5xx': 0, 'order_placed': 588, 'unhandled_exceptions_by_type': {}}
+
+========================================================================
+RESULT
+========================================================================
+  checkout p95  baseline 0.042 s -> faulted 3.810 s -> recovered 0.041 s
+  the fault multiplied p95 by 91.0x
+
+  full record written to results\experiment-20260923-182200-after-fix.json

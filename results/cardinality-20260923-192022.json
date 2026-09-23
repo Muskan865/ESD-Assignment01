@@ -1,0 +1,50 @@
+{
+  "experiment": "cardinality",
+  "started": "20260923-192022",
+  "steps": [
+    {
+      "step": "1-before",
+      "at": "2026-09-23T14:20:35.991496+00:00",
+      "values": {
+        "demo_requests_series": 0.0,
+        "demo_series_seen_last_10m": 0.0,
+        "demo_safe_series": 0.0,
+        "tsdb_head_series": 2820.0,
+        "samples_per_second": 443.5250686500936
+      }
+    },
+    {
+      "step": "2-request_id-label",
+      "at": "2026-09-23T14:20:49.346366+00:00",
+      "values": {
+        "demo_requests_series": 100.0,
+        "demo_series_seen_last_10m": 100.0,
+        "demo_safe_series": 0.0,
+        "tsdb_head_series": 3056.0,
+        "samples_per_second": 433.00600109110746
+      }
+    },
+    {
+      "step": "3-label-removed-after-restart",
+      "at": "2026-09-23T14:21:05.093548+00:00",
+      "values": {
+        "demo_requests_series": 1.0,
+        "demo_series_seen_last_10m": 101.0,
+        "demo_safe_series": 0.0,
+        "tsdb_head_series": 3077.0,
+        "samples_per_second": 431.6603018730678
+      }
+    },
+    {
+      "step": "4-bounded-label",
+      "at": "2026-09-23T14:21:17.480863+00:00",
+      "values": {
+        "demo_requests_series": 1.0,
+        "demo_series_seen_last_10m": 101.0,
+        "demo_safe_series": 2.0,
+        "tsdb_head_series": 3099.0,
+        "samples_per_second": 428.0232769594472
+      }
+    }
+  ]
+}

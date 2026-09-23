@@ -1,0 +1,211 @@
+# Tiny Shop — Assignment 1 (Observability) stack.
+#
+# Nine containers in three groups:
+#   application : storefront-api, payment-service, postgres
+#   metrics     : prometheus, node-exporter, grafana
+#   logs        : elasticsearch, filebeat, kibana
+#
+# Structure and several hard-won configuration details (Grafana datasource uid
+# pinning, distinct Grafana mount points, Filebeat docker autodiscover) follow
+# the course Lab 1 "Midnight Launch" stack — see REPORT.md "Credits".
+
+services:
+  # ---------------------------------------------------------------- application
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    environment:
+      - POSTGRES_USER=shop
+      - POSTGRES_PASSWORD=shop
+      - POSTGRES_DB=shop
+    # The init script runs only on an empty data directory, i.e. on the first
+    # `up` or after `down -v`. It is idempotent anyway.
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shop -d shop"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  payment-service:
+    build: ./services/payment-service
+    container_name: payment-service
+    ports:
+      - "8001:8001"
+    environment:
+      - SERVICE_NAME=payment-service
+    # Filebeat's docker autodiscover only ships containers carrying this label,
+    # so infrastructure containers do not flood the log index.
+    labels:
+      co.elastic.logs/enabled: "true"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+  storefront-api:
+    build: ./services/storefront-api
+    container_name: storefront-api
+    ports:
+      - "8000:8000"
+    environment:
+      - SERVICE_NAME=storefront-api
+      - PAYMENT_SERVICE_URL=http://payment-service:8001
+      - DATABASE_URL=postgresql://shop:shop@postgres:5432/shop
+      # Part E.2: `none` removes the request_id label; takes effect on restart.
+      - CARDINALITY_DEMO_LABEL=${CARDINALITY_DEMO_LABEL:-request_id}
+    labels:
+      co.elastic.logs/enabled: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      payment-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------- metrics
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      # Assignment Part E asks how long metric history survives. 7 days here.
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    volumes:
+      - ./telemetry/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.1
+    container_name: node-exporter
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/host/root
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro
+    ports:
+      - "9100:9100"
+    pid: host
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    volumes:
+      # These three container paths must stay DISTINCT — mounting two host
+      # directories onto one container path makes the daemon refuse to start
+      # the container with "Duplicate mount point".
+      - ./telemetry/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./telemetry/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./telemetry/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      # No volume for Grafana's own state on purpose: the datasource and the
+      # dashboard are provisioned from the files above, so they are rebuilt on
+      # every start and survive even `down -v`. Only UI preferences are lost.
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  # ----------------------------------------------------------------------- logs
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      # Classroom-only local stack. Never disable authentication this way on
+      # anything reachable from outside your laptop.
+      - xpack.security.enabled=false
+      - xpack.license.self_generated.type=basic
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+    restart: unless-stopped
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.15.0
+    container_name: filebeat
+    user: root
+    # Install our index template BEFORE the first log is shipped, so the first
+    # tiny-shop-logs-<date> index gets fixed field types (keyword ids, float
+    # durations). Filebeat only starts if the PUT succeeds.
+    command:
+      - sh
+      - -c
+      - >-
+        curl -fsS -X PUT http://elasticsearch:9200/_index_template/tiny-shop-logs
+        -H 'Content-Type: application/json'
+        --data-binary @/usr/share/filebeat/index-template.json
+        && exec filebeat -e --strict.perms=false
+    volumes:
+      - ./telemetry/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ./telemetry/elasticsearch/index-template.json:/usr/share/filebeat/index-template.json:ro
+      # Filebeat reads the raw container stdout files the Docker daemon writes,
+      # and uses the socket to resolve container id -> name/labels.
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Named volume keeps the read-offset registry, so a Filebeat restart does
+      # not re-ship every log line it has already sent.
+      - filebeat-data:/usr/share/filebeat/data
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    restart: unless-stopped
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.0
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - XPACK_SECURITY_ENABLED=false
+      - TELEMETRY_ENABLED=false
+    ports:
+      - "5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  prometheus-data:
+  elasticsearch-data:
+  filebeat-data:

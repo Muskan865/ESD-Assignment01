@@ -1,0 +1,51 @@
+# Prometheus scrape configuration for the Tiny Shop stack.
+#
+# 5s scrape interval: fast enough that a 60-second experiment stage gets ~12
+# samples (the assignment asks for "several scrapes" per stage), slow enough
+# that a laptop is not doing anything silly. Every rate()/histogram_quantile()
+# window in the Grafana dashboard is 1m, which is >= 4x the scrape interval,
+# so no window can ever contain fewer than two samples.
+
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+  external_labels:
+    monitor: tiny-shop
+
+scrape_configs:
+  # --- the application -----------------------------------------------------
+  - job_name: storefront-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['storefront-api:8000']
+        labels:
+          service: storefront-api
+          tier: application
+
+  - job_name: payment-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['payment-service:8001']
+        labels:
+          service: payment-service
+          tier: application
+
+  # --- host resources (Part B: CPU, memory, disk, network) ----------------
+  # NOTE ON WHICH MACHINE THIS IS: node-exporter runs in a container with the
+  # host /proc, /sys and / bind-mounted in, so it reports the Linux kernel that
+  # is actually running the containers. On Docker Desktop for Windows or macOS
+  # that kernel is the Docker Desktop VM, NOT the Windows/macOS host. The
+  # `machine` label records this explicitly; see REPORT.md Part B.
+  - job_name: node-exporter
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          tier: infrastructure
+          machine: docker-host
+
+  # --- Prometheus watching itself (used in the cardinality experiment) -----
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          tier: infrastructure

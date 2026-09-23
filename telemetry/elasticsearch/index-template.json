@@ -1,0 +1,53 @@
+{
+  "index_patterns": ["tiny-shop-logs-*"],
+  "priority": 200,
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "message": { "type": "text" },
+        "request_id": { "type": "keyword" },
+        "service": { "properties": {
+          "name": { "type": "keyword" },
+          "node": { "properties": { "name": { "type": "keyword" } } }
+        } },
+        "log": { "properties": { "level": { "type": "keyword" } } },
+        "event": { "properties": {
+          "action": { "type": "keyword" },
+          "outcome": { "type": "keyword" },
+          "reason": { "type": "keyword" },
+          "duration_ms": { "type": "float" }
+        } },
+        "http": { "properties": {
+          "request": { "properties": { "method": { "type": "keyword" } } },
+          "response": { "properties": { "status_code": { "type": "short" } } }
+        } },
+        "url": { "properties": {
+          "path": { "type": "keyword" },
+          "route": { "type": "keyword" }
+        } },
+        "order": { "properties": {
+          "id": { "type": "long" },
+          "item_count": { "type": "integer" },
+          "value_dollars": { "type": "float" },
+          "amount_dollars": { "type": "float" }
+        } },
+        "payment": { "properties": {
+          "method": { "type": "keyword" },
+          "status_code": { "type": "short" },
+          "duration_ms": { "type": "float" }
+        } },
+        "error": { "properties": {
+          "type": { "type": "keyword" },
+          "message": { "type": "text" },
+          "stack_trace": { "type": "text", "index": false }
+        } },
+        "container": { "properties": { "name": { "type": "keyword" } } }
+      }
+    }
+  }
+}

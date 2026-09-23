@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tiny Shop</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --ink: #1c2024; --muted: #6b7280;
+    --line: #e3e6ea; --accent: #2f6f4f; --warn: #b4530a; --bad: #b3261e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+         background: var(--bg); color: var(--ink); }
+  header { background: var(--card); border-bottom: 1px solid var(--line); padding: 16px; }
+  header h1 { margin: 0; font-size: 20px; }
+  header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  main { max-width: 980px; margin: 0 auto; padding: 16px; display: grid;
+         grid-template-columns: 1fr 320px; gap: 16px; align-items: start; }
+  @media (max-width: 760px) { main { grid-template-columns: 1fr; } }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+            padding: 14px; }
+  h2 { margin: 0 0 10px; font-size: 14px; text-transform: uppercase;
+       letter-spacing: .05em; color: var(--muted); }
+  .product { display: flex; align-items: center; gap: 10px; padding: 9px 0;
+             border-bottom: 1px solid var(--line); }
+  .product:last-child { border-bottom: 0; }
+  .product .name { flex: 1; font-weight: 500; }
+  .product .sku { color: var(--muted); font-size: 12px; font-family: ui-monospace, monospace; }
+  .product .stock { font-size: 12px; color: var(--muted); min-width: 74px; text-align: right; }
+  .product .price { min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
+  button { font: inherit; padding: 6px 12px; border-radius: 6px; cursor: pointer;
+           border: 1px solid var(--line); background: #fff; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .cart-line { display: flex; gap: 8px; padding: 5px 0; font-size: 14px; }
+  .cart-line .qty { color: var(--muted); }
+  .cart-line .grow { flex: 1; }
+  .total { display: flex; justify-content: space-between; margin-top: 10px;
+           padding-top: 10px; border-top: 1px solid var(--line); font-weight: 600; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 3px; }
+  input, select { font: inherit; width: 100%; padding: 6px 8px;
+                  border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; font-size: 11px; text-transform: uppercase;
+       color: var(--muted); padding: 6px 4px; border-bottom: 1px solid var(--line); }
+  td { padding: 7px 4px; border-bottom: 1px solid var(--line);
+       font-variant-numeric: tabular-nums; }
+  .badge { font-size: 11px; padding: 2px 7px; border-radius: 99px; font-weight: 600; }
+  .PLACED { background: #e7f0ff; color: #1c4fa1; }
+  .FULFILLED { background: #e6f4ec; color: var(--accent); }
+  .CANCELLED { background: #fdeceb; color: var(--bad); }
+  #flash { margin: 10px 0 0; font-size: 13px; min-height: 20px; }
+  #flash.ok { color: var(--accent); } #flash.err { color: var(--bad); }
+  .links { padding: 0 16px 24px; max-width: 980px; margin: 0 auto;
+           font-size: 13px; color: var(--muted); }
+  .links a { color: var(--accent); margin-right: 14px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Tiny Shop</h1>
+  <p>A very small storefront &mdash; instrumented with Prometheus metrics and JSON logs.</p>
+</header>
+
+<main>
+  <div>
+    <section>
+      <h2>Catalogue</h2>
+      <div id="products">Loading&hellip;</div>
+    </section>
+
+    <section style="margin-top:16px">
+      <h2>Recent orders</h2>
+      <table>
+        <thead><tr><th>#</th><th>Status</th><th>Items</th><th>Total</th><th></th></tr></thead>
+        <tbody id="orders"><tr><td colspan="5">Loading&hellip;</td></tr></tbody>
+      </table>
+    </section>
+  </div>
+
+  <section>
+    <h2>Cart</h2>
+    <div id="cart"><p style="color:var(--muted)">Empty.</p></div>
+    <label for="customer">Customer name</label>
+    <input id="customer" value="guest" maxlength="40">
+    <label for="method">Payment method</label>
+    <select id="method">
+      <option value="card">card</option>
+      <option value="wallet">wallet</option>
+      <option value="cod">cash on delivery</option>
+    </select>
+    <p><button class="primary" id="checkout" style="width:100%;margin-top:12px" disabled>
+      Place order</button></p>
+    <p id="flash"></p>
+  </section>
+</main>
+
+<p class="links">
+  <a href="/docs">API docs</a>
+  <a href="/metrics">/metrics</a>
+  <a href="http://localhost:3000/d/tiny-shop/tiny-shop-observability">Grafana</a>
+  <a href="http://localhost:5601/app/discover">Kibana</a>
+  <a href="http://localhost:9090/targets">Prometheus targets</a>
+</p>
+
+<script>
+const cart = new Map();       // sku -> {name, price_cents, quantity}
+let catalogue = [];
+
+const money = c => "$" + (c / 100).toFixed(2);
+const $ = id => document.getElementById(id);
+
+function flash(msg, ok) {
+  const el = $("flash");
+  el.textContent = msg;
+  el.className = ok ? "ok" : "err";
+}
+
+async function loadProducts() {
+  const res = await fetch("/api/products");
+  catalogue = (await res.json()).products;
+  $("products").innerHTML = "";
+  for (const p of catalogue) {
+    const row = document.createElement("div");
+    row.className = "product";
+    row.innerHTML =
+      '<span class="name">' + p.name + ' <span class="sku">' + p.sku + '</span></span>' +
+      '<span class="stock">' + p.stock + ' in stock</span>' +
+      '<span class="price">' + money(p.price_cents) + '</span>';
+    const btn = document.createElement("button");
+    btn.textContent = "Add";
+    btn.disabled = p.stock < 1;
+    btn.onclick = () => addToCart(p);
+    row.appendChild(btn);
+    $("products").appendChild(row);
+  }
+}
+
+function addToCart(p) {
+  const line = cart.get(p.sku) || { name: p.name, price_cents: p.price_cents, quantity: 0 };
+  line.quantity += 1;
+  cart.set(p.sku, line);
+  renderCart();
+}
+
+function renderCart() {
+  const box = $("cart");
+  if (cart.size === 0) {
+    box.innerHTML = '<p style="color:var(--muted)">Empty.</p>';
+    $("checkout").disabled = true;
+    return;
+  }
+  let total = 0;
+  box.innerHTML = "";
+  for (const [sku, line] of cart) {
+    total += line.price_cents * line.quantity;
+    const el = document.createElement("div");
+    el.className = "cart-line";
+    el.innerHTML = '<span class="qty">' + line.quantity + '&times;</span>' +
+                   '<span class="grow">' + line.name + '</span>' +
+                   '<span>' + money(line.price_cents * line.quantity) + '</span>';
+    const rm = document.createElement("button");
+    rm.textContent = "×";
+    rm.style.padding = "0 7px";
+    rm.onclick = () => { cart.delete(sku); renderCart(); };
+    el.appendChild(rm);
+    box.appendChild(el);
+  }
+  const t = document.createElement("div");
+  t.className = "total";
+  t.innerHTML = "<span>Total</span><span>" + money(total) + "</span>";
+  box.appendChild(t);
+  $("checkout").disabled = false;
+}
+
+async function loadOrders() {
+  const res = await fetch("/api/orders?limit=12");
+  const orders = (await res.json()).orders;
+  const body = $("orders");
+  body.innerHTML = "";
+  if (!orders.length) {
+    body.innerHTML = '<tr><td colspan="5" style="color:var(--muted)">No orders yet.</td></tr>';
+    return;
+  }
+  for (const o of orders) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = "<td>" + o.id + "</td>" +
+                   '<td><span class="badge ' + o.status + '">' + o.status + "</span></td>" +
+                   "<td>" + o.item_count + "</td>" +
+                   "<td>" + money(o.total_cents) + "</td>";
+    const td = document.createElement("td");
+    if (o.status === "PLACED") {
+      const f = document.createElement("button");
+      f.textContent = "Fulfil";
+      f.onclick = () => act(o.id, "fulfil");
+      const c = document.createElement("button");
+      c.textContent = "Cancel";
+      c.style.marginLeft = "6px";
+      c.onclick = () => act(o.id, "cancel");
+      td.append(f, c);
+    }
+    tr.appendChild(td);
+    body.appendChild(tr);
+  }
+}
+
+async function act(id, what) {
+  const res = await fetch("/api/orders/" + id + "/" + what, { method: "POST" });
+  const body = await res.json();
+  flash(res.ok ? ("Order " + id + " " + body.status.toLowerCase() + ".")
+               : ("Could not " + what + " order " + id + ": " + body.detail), res.ok);
+  await Promise.all([loadOrders(), loadProducts()]);
+}
+
+$("checkout").onclick = async () => {
+  const items = [...cart].map(([sku, line]) => ({ sku, quantity: line.quantity }));
+  $("checkout").disabled = true;
+  try {
+    const res = await fetch("/api/checkout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        items,
+        customer: $("customer").value || "guest",
+        payment_method: $("method").value
+      })
+    });
+    const body = await res.json();
+    if (res.ok) {
+      flash("Order #" + body.order_id + " placed - " + "$" + body.total_dollars +
+            " (request id " + body.request_id + ")", true);
+      cart.clear();
+    } else {
+      // Rejections are normal business outcomes here: declined card, out of
+      // stock, or the payment provider being down during a Part E experiment.
+      flash("Checkout failed: " + (body.detail || res.status), false);
+    }
+  } catch (err) {
+    flash("Checkout failed: " + err.message, false);
+  }
+  renderCart();
+  await Promise.all([loadOrders(), loadProducts()]);
+};
+
+loadProducts();
+loadOrders();
+setInterval(loadOrders, 10000);
+</script>
+</body>
+</html>

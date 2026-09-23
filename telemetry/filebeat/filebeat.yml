@@ -1,0 +1,101 @@
+# Filebeat: collect container stdout, parse our JSON, ship to Elasticsearch.
+#
+# How the pieces connect
+# ----------------------
+# 1. Our services print ONE JSON object per line to stdout.
+# 2. The Docker json-file log driver writes each line, wrapped in its own
+#    envelope, to /var/lib/docker/containers/<id>/<id>-json.log.
+# 3. Filebeat tails those files (bind-mounted read-only) and asks the Docker
+#    socket which container each id belongs to.
+# 4. `decode_json_fields` unwraps OUR json from the `message` field and
+#    promotes its keys (@timestamp, service.name, log.level, request_id, ...)
+#    to real, searchable Elasticsearch fields.
+# 5. Elasticsearch indexes the document; Kibana searches it.
+
+filebeat.autodiscover:
+  providers:
+    - type: docker
+      host: unix:///var/run/docker.sock
+      # Only containers carrying the label co.elastic.logs/enabled=true are
+      # collected. Without this, Elasticsearch's own multi-megabyte startup
+      # logs would drown the application logs we actually want.
+      hints.enabled: true
+      hints.default_config.enabled: false
+      hints.default_config:
+        type: filestream
+        id: container-${data.container.id}
+        prospector.scanner.symlinks: true
+        parsers:
+          - container:
+              stream: all
+              format: docker
+        paths:
+          - /var/lib/docker/containers/${data.container.id}/*.log
+
+processors:
+  # Attach container name / image / labels so `container.name` is filterable
+  # in Kibana even before our own fields are decoded.
+  - add_docker_metadata:
+      host: unix:///var/run/docker.sock
+
+  # THE IMPORTANT ONE. Turns the JSON text in `message` into real fields.
+  #   target: ""        -> promote to the top level, not into a sub-object
+  #   overwrite_keys    -> our @timestamp wins over Filebeat's read time
+  #   add_error_key     -> a line that is NOT valid JSON is kept, and tagged
+  #                        with error.message, rather than silently dropped.
+  #                        uvicorn's own plain-text startup banner lands here.
+  - decode_json_fields:
+      fields: ["message"]
+      target: ""
+      overwrite_keys: true
+      add_error_key: true
+      max_depth: 4
+
+  # Our JSON carries its own ISO-8601 @timestamp (when the EVENT happened).
+  # Without this, Elasticsearch would sort by when Filebeat READ the line,
+  # which drifts during a backlog and makes incident timelines wrong.
+  - timestamp:
+      field: "@timestamp"
+      layouts:
+        - "2006-01-02T15:04:05Z07:00"
+        - "2006-01-02T15:04:05.999999Z07:00"
+        - "2006-01-02T15:04:05.999999-07:00"
+      ignore_missing: true
+      ignore_failure: true
+
+  # Trim Filebeat bookkeeping we never search on, to keep documents small.
+  - drop_fields:
+      # docker.* holds only docker.container.labels: every Compose label,
+      # including the host project path, on every document. Never searched.
+      fields: ["agent.ephemeral_id", "agent.id", "ecs", "input",
+               "log.offset", "container.labels", "docker"]
+      ignore_missing: true
+
+output.elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
+  # One plain index per day, e.g. tiny-shop-logs-2026.09.23. The date comes
+  # from the event's @timestamp, so a line always lands in its own day's index.
+  index: "tiny-shop-logs-%{+yyyy.MM.dd}"
+  # Security is disabled on this classroom Elasticsearch, so no credentials are
+  # set here. Never do this on anything reachable from outside your laptop.
+
+# --- index naming and retention -------------------------------------------
+# ILM is off (same approach as Lab 1). Filebeat 8 would otherwise write to a
+# data stream and ignore the custom index name above. With ILM off, nothing
+# deletes old logs automatically: each day's index stays until it is deleted
+# by hand (DELETE /tiny-shop-logs-<date>) or the elasticsearch-data volume is
+# removed with `docker compose down -v`.
+setup.ilm.enabled: false
+
+# No index template either. Filebeat 8 always loads its template as a
+# data-stream template, which would turn each daily index into a data stream.
+# Without it, Elasticsearch creates an ordinary index on the first write and
+# maps each field from its first value (dynamic mapping): numbers such as
+# event.duration_ms become numeric, strings become text plus a .keyword
+# sub-field. That is enough for every Kibana query in this project.
+setup.template.enabled: false
+
+# Filebeat's own logs. `warning` keeps its chatter out of the way; raise to
+# `info` or `debug` when troubleshooting the pipeline itself.
+logging.level: warning
+logging.to_stderr: true

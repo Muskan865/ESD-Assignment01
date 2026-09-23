@@ -1,0 +1,15 @@
+apiVersion: 1
+
+providers:
+  - name: 'Tiny Shop dashboards'
+    orgId: 1
+    folder: ''
+    type: file
+    disableDeletion: false
+    allowUiUpdates: true
+    updateIntervalSeconds: 10
+    options:
+      # Must be a DIRECTORY Grafana scans for dashboard JSON, and it must not
+      # live inside the provisioning tree that declares it.
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

@@ -1,0 +1,56 @@
+========================================================================
+PART E.2 - CARDINALITY EXPLOSION
+========================================================================
+A counter labelled with request_id creates ONE NEW TIME SERIES PER
+REQUEST. Capped at 100 distinct ids, as the assignment requires.
+
+[0] preparing
+  -> restarting storefront-api with CARDINALITY_DEMO_LABEL=request_id
+     storefront-api is back up (label mode: request_id)
+
+[1] before - demo counter not yet written
+     count(demo_requests_total)          : 0
+     series stored in the last 10 minutes : 0
+     count(demo_requests_safe_total)      : 0
+     TSDB head series (whole Prometheus)  : 2820
+
+[2] demo_requests_total{request_id=...} - the unbounded label
+  -> sending 100 requests, each with a fresh request id
+     count(demo_requests_total)          : 100
+     series stored in the last 10 minutes : 100
+     count(demo_requests_safe_total)      : 0
+     TSDB head series (whole Prometheus)  : 3056
+
+[3] label removed from the code, app restarted, same test repeated
+  -> restarting storefront-api with CARDINALITY_DEMO_LABEL=none
+     storefront-api is back up (label mode: none)
+  -> sending 100 requests, each with a fresh request id
+     count(demo_requests_total)          : 1
+     series stored in the last 10 minutes : 101
+     count(demo_requests_safe_total)      : 0
+     TSDB head series (whole Prometheus)  : 3077
+
+[4] extra: a bounded label (tier = standard | vip), 100 requests
+     count(demo_requests_total)          : 1
+     series stored in the last 10 minutes : 101
+     count(demo_requests_safe_total)      : 2
+     TSDB head series (whole Prometheus)  : 3099
+
+[5] restoring the default configuration
+  -> restarting storefront-api with CARDINALITY_DEMO_LABEL=request_id
+     storefront-api is back up (label mode: request_id)
+
+========================================================================
+RESULT
+========================================================================
+  100 requests, request_id label  -> +100 series
+  100 requests, label removed     -> 1 series
+  100 requests, bounded tier label -> 2 series
+  but Prometheus still stored 101 distinct demo series in the last 10 minutes
+
+  NOTE: removing the label stops NEW series being created, and the old
+  ones drop out of instant queries once they go stale. Their samples
+  stay on disk until retention deletes them.
+
+  full record written to results\cardinality-20260923-192022.json
+

@@ -1,0 +1,8 @@
+# Keep the build context minimal. Docker reads .dockerignore from the build
+# context root, which for this image is this service directory.
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
