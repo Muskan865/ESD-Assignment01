@@ -585,7 +585,7 @@ def cmd_status(args):
     print("faults:")
     print(json.dumps(body, indent=2))
     print("\nlive metrics:")
-    print_observation(observe("status"))
+    print_observation(observe("status", time.time()))
     total = count_logs("*")
     print(f"\nlog documents in tiny-shop-logs-*: {total if total is not None else 'unreachable'}")
 

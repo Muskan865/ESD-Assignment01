@@ -265,7 +265,7 @@ services/payment-service/       mock payment provider (FastAPI, port 8001)
 telemetry/prometheus/           scrape config
 telemetry/grafana/              datasource + dashboard provisioning
 telemetry/grafana/dashboards/   the dashboard JSON (27 panels)
-telemetry/filebeat/             log shipping config + retention policy
+telemetry/filebeat/             log shipping config (daily indices, no ILM)
 telemetry/kibana/               data view + saved searches (imported by `setup`)
 
 scripts/shopctl.py              traffic, faults, experiments, verification

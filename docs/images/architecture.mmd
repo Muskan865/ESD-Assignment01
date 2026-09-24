@@ -1,0 +1,45 @@
+flowchart TB
+    browser["Browser<br/><i>storefront page</i>"]
+
+    subgraph app["Application"]
+        storefront["<b>storefront-api</b> :8000<br/>FastAPI<br/>catalogue, cart, orders<br/><i>owns all business metrics</i>"]
+        payment["<b>payment-service</b> :8001<br/>FastAPI<br/>mock card charges<br/><i>fault injection lives here</i>"]
+        postgres[("<b>postgres</b> :5432<br/>products, orders,<br/>order_items")]
+    end
+
+    subgraph metrics["Metrics pipeline"]
+        nodeexp["<b>node-exporter</b> :9100<br/>CPU / mem / disk / net<br/>of the Docker host"]
+        prom["<b>prometheus</b> :9090<br/>scrapes every 5s<br/>TSDB, 7d retention"]
+        grafana["<b>grafana</b> :3000<br/>27 provisioned panels"]
+    end
+
+    subgraph logs["Logging pipeline"]
+        docker["<b>Docker json-file driver</b><br/>/var/lib/docker/containers/"]
+        filebeat["<b>filebeat</b><br/>autodiscover + JSON decode"]
+        es[("<b>elasticsearch</b> :9200<br/>tiny-shop-logs-YYYY.MM.DD<br/>daily indices, kept until deleted")]
+        kibana["<b>kibana</b> :5601<br/>Discover"]
+    end
+
+    browser -->|"HTTP<br/>place / cancel / fulfil"| storefront
+    storefront -->|"SQL<br/>psycopg2 pool"| postgres
+    storefront -->|"POST /payment/charge<br/>x-request-id forwarded"| payment
+
+    storefront -.->|"GET /metrics"| prom
+    payment -.->|"GET /metrics"| prom
+    nodeexp -.->|"GET /metrics"| prom
+    prom -->|"PromQL"| grafana
+
+    storefront ==>|"stdout: 1 JSON line"| docker
+    payment ==>|"stdout: 1 JSON line"| docker
+    docker -->|"tails *.log<br/>read-only bind mount"| filebeat
+    filebeat -->|"bulk index"| es
+    es -->|"query"| kibana
+
+    classDef appNode fill:#e8f2ec,stroke:#2f6f4f,color:#12301f
+    classDef metricNode fill:#fdf0e3,stroke:#b4530a,color:#4a2404
+    classDef logNode fill:#e9eefb,stroke:#2f4f8f,color:#16264a
+    classDef store fill:#f2f2f4,stroke:#555,color:#222
+    class storefront,payment appNode
+    class nodeexp,prom,grafana metricNode
+    class docker,filebeat,es,kibana logNode
+    class postgres,browser store
