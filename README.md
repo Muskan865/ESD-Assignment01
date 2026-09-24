@@ -6,13 +6,9 @@ A very small e-commerce application, fully instrumented with Prometheus metrics
 and a JSON logging pipeline into Elasticsearch, plus two reproducible
 experiments that break it on purpose and measure what happens.
 
-The written answers for Parts A–E are in **[`REPORT.md`](REPORT.md)**.
-The architecture diagram and the metric/log walkthroughs are in
-**[`docs/architecture.md`](docs/architecture.md)**.
-
 ---
 
-## What you get
+## It includes
 
 | | |
 | :-- | :-- |
@@ -26,15 +22,9 @@ The architecture diagram and the metric/log walkthroughs are in
 
 ## Prerequisites
 
-- **Docker Engine with the Compose v2 plugin.** Check with `docker compose version` —
-  it must print a version. The old `docker-compose` v1 script is not supported.
-- **Python 3.8 or newer** for the control script. It uses the standard library
-  only, so there is **nothing to `pip install`**. The commands below say
-  `python3`; on Windows, where `python3` is often only a Microsoft Store stub,
-  use `python` instead.
-- **About 6 GB of free RAM and 5 GB of free disk.** Elasticsearch and Kibana are
-  by far the largest things here; the application containers are tiny.
-
+- **Docker Engine with the Compose v2 plugin.** 
+- **Python 3.8 or newer** 
+- **About 6 GB of free RAM and 5 GB of free disk.** 
 ---
 
 ## 1. Start
@@ -45,56 +35,17 @@ From the root of this folder:
 docker compose up -d --build
 ```
 
-The first build takes a few minutes (it downloads Python, Postgres, Prometheus,
-Grafana, Node Exporter and the three Elastic images). Subsequent starts take
-seconds.
-
-Startup is ordered by healthchecks: the storefront waits for Postgres *and*
-payment-service to report healthy, and Filebeat waits for Elasticsearch, so
-your first request cannot race a half-booted backend.
-
 ### Then verify everything is actually up
 
 ```bash
 python3 scripts/shopctl.py verify
 ```
 
-Expected output — every line `OK`, every Prometheus target `UP`:
-
-```
-  OK    storefront-api           200  (12 ms)
-  OK    storefront ready (db)    200  (8 ms)
-  OK    payment-service          200  (5 ms)
-  OK    prometheus               200  (4 ms)
-  OK    grafana                  200  (11 ms)
-  OK    elasticsearch            200  (19 ms)
-  OK    kibana                   200  (88 ms)
-  OK    node-exporter            200  (14 ms)
-
-  Prometheus scrape targets:
-    UP    storefront-api
-    UP    payment-service
-    UP    node-exporter
-    UP    prometheus
-```
-
-Elasticsearch and Kibana are the slowest to come up — give them 60–90 seconds
-on a first start before worrying about a `FAIL`.
-
 ### Import the Kibana data view and saved searches (one command, once)
 
 ```bash
 python3 scripts/shopctl.py setup
 ```
-
-This imports `telemetry/kibana/saved-searches.ndjson`: the `tiny-shop-logs-*`
-data view (with `@timestamp` as the time field, which Discover needs in order to
-show anything) and six saved searches: errors, 5xx responses, payment failures,
-checkout requests, slow checkouts, and orders over $100. In Discover, use
-**Open** to load one. It is safe to re-run; existing objects are overwritten.
-The same file can be imported by hand under *Stack Management → Saved objects →
-Import*.
-
 ---
 
 ## 2. Use it
@@ -110,14 +61,6 @@ Import*.
 | PromQL console | <http://localhost:9090/graph> |
 | Node Exporter raw | <http://localhost:9100/metrics> |
 | Elasticsearch indices | <http://localhost:9200/_cat/indices?v> |
-
-Grafana may show a "change password" screen — click **Skip**. The password is
-pinned to `admin` in `docker-compose.yml`. Anonymous viewing is also enabled, so
-the dashboard opens without logging in at all.
-
-> **The dashboard is empty on a fresh start, and that is correct** — no traffic
-> has been sent yet. Place an order in the browser, or run the load generator
-> below, and the panels fill within one or two 5-second scrapes.
 
 ### Generate some traffic
 
@@ -174,33 +117,19 @@ python3 scripts/shopctl.py load --rps 10 --duration 60
 python3 scripts/shopctl.py fault off          # always safe to run
 ```
 
-### Offline unit tests (optional)
-
-79 in-process checks of the application logic, no Docker required:
-
-```bash
-pip install fastapi httpx prometheus-client requests
-python tests/test_payment_service.py
-python tests/test_storefront_api.py
-```
-
-See `tests/README.md` for what they cover.
-
 ### Part E.2 — cardinality explosion
 
 ```bash
 python3 scripts/shopctl.py cardinality
 ```
 
-Follows the assignment's steps: sends exactly 100 requests to a counter
+Sends exactly 100 requests to a counter
 labelled with the request id and measures the series growth; then **removes the
 label and restarts `storefront-api`** (it recreates the container with
 `CARDINALITY_DEMO_LABEL=none`), repeats the 100 requests and compares after
 another scrape; then, as an extra, sends 100 requests through a bounded label.
 Finally it restarts the storefront in its default configuration. Takes about a
-minute, and needs the `docker` CLI on your PATH because it restarts a container.
-
-> This is deliberately capped at 100 series. It will not hurt Prometheus.
+minute.
 
 ### Undoing a fault
 
@@ -230,12 +159,6 @@ docker compose down
 # stop and delete everything, including all volumes — a full factory reset
 docker compose down -v
 ```
-
-`down -v` removes the Postgres data, the Prometheus TSDB, the Elasticsearch
-indices and the Filebeat read-offset registry. The next `up` starts from an
-empty database with the five seed products restored. The Grafana datasource and
-dashboard are provisioned from files, so they come back either way.
-
 To also reclaim the built images:
 
 ```bash
@@ -276,45 +199,3 @@ REPORT.md                       the written answers, Parts A-E
 ```
 
 ---
-
-## Troubleshooting
-
-**Every Grafana panel says "Data source not found".**
-The provisioned datasource uid did not load. `docker compose up -d --force-recreate grafana`.
-
-**Grafana panels are empty but show no error.**
-Almost always correct: there is no traffic yet. Run
-`python3 scripts/shopctl.py load --rps 10 --duration 30`.
-
-**Kibana says "no data views".**
-Run `python3 scripts/shopctl.py setup`. If it reports that the index does not
-exist, send traffic first — the index is created by the first log document.
-
-**Kibana shows a data view but zero documents.**
-Check the time picker (it defaults to the last 15 minutes) and check Filebeat:
-`docker compose logs filebeat | tail -40`.
-
-**Elasticsearch container exits immediately.**
-Almost always memory. It is pinned to a 512 MB heap here; make sure Docker
-Desktop has at least 4 GB allocated.
-
-**`storefront-api` restarts in a loop.**
-Check it can reach Postgres: `docker compose logs storefront-api | tail -30`.
-The service retries for 10 seconds at startup before giving up.
-
-**Port already in use.**
-Something else on your machine holds 8000, 3000, 5601, 9090, 9200 or 5432.
-Change the left-hand side of the `ports:` mapping in `docker-compose.yml`.
-
----
-
-## A note on security
-
-Elasticsearch and Kibana run with authentication **disabled**, and Grafana ships
-with the password `admin` and anonymous viewing on. That is deliberate — it
-makes this stack a single `docker compose up` for a grader — and it is only
-acceptable because nothing here is reachable from outside your machine. Do not
-expose these ports, and do not reuse this configuration anywhere real.
-
-The application never logs card numbers, tokens, emails, addresses or any other
-secret or personal data. See `REPORT.md` Part C.
